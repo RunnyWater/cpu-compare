@@ -21,3 +21,4 @@ AMD	Ryzen 5 PRO 5650GE
 AMD	Ryzen 5 5600GT	
 AMD	Ryzen 5 5600G	
 AMD	Ryzen 5 5600GE	
+Test: if cpu is not in the cpu global list

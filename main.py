@@ -1,55 +1,55 @@
 from bs4 import BeautifulSoup
 import requests
+import pandas as pd
 
-def initialize():
+def get_soup_object():
     url = "https://www.cpubenchmark.net/cpu_list.php"
     response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    return soup
+        
+def get_search_names():
     input_file_path = 'input.txt'    
-      
+    with open(input_file_path, 'r') as input_file:
+        search_names = {line.strip().replace('\t', ' ') for line in input_file}
+        return search_names
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.content, 'html.parser')
-        with open(input_file_path, 'r') as input_file:
-            search_names = {line.strip().replace('\t', ' ') for line in input_file}
-            return (search_names, soup)
-    else:
-        print(f"Failed to retrieve the page. Status code: {response.status_code}")
 
-def get_cpu_data(search_names, soup):
-    output_file_path = 'output.csv'
+def get_cpu_table(soup):
     table = soup.find(id="cputable")
-    if not table:
-        print("Table with ID 'cputable' not found in the HTML file.")
-    else:
-        with open(output_file_path, 'w', encoding='utf-8') as output_file:
-            text_header = get_text_header(table)
-            output_file.write(f"{text_header}\n")
-            table_rows = table.select("tbody tr")  
-            if not table_rows:
-                print("No rows found in the table's <tbody>.")
-            else:
-                for row in (table_rows):
-                    name_link = row.select_one("td a")
-                    if name_link:
-                        name = name_link.text.strip()
-                        if name.strip() in search_names:
-                            line_row = f'{name.strip()}'
-                            cpu_values = row.select('td')[1:]
-                            for cpu_value in cpu_values:
-                                line_row = line_row + "," + cpu_value.text.replace(',', '')
-                            output_file.write(f"{line_row.replace('\t', ' ').replace('\n', '')}\n")
+    return table
 
-def get_text_header(table):
+def get_table_header_columns(table):
     table_header = table.select_one("thead tr").select('th')
-    text_header = table_header[0].text
-    for header in table_header[1:]:
-        if '\n' in header.text:
-            text_header += ','+header.text.strip().split('\n')[0]
-        else: text_header += ','+header.text.strip()
+    columns= []
+    for header in table_header:
+        columns.append(header.text.strip())
 
-    return text_header
+    return columns
 
-get_cpu_data( *initialize() )
+def get_cpu_info(table, df : pd.DataFrame):
+    columns = df.columns
+    table_rows = table.select("tbody tr")  
+    for row in (table_rows):
+        name_link = row.select_one("td a")
+        if name_link:
+            name = name_link.text.strip()
+            if name.strip() in df['CPU Name'].values:
+                cpu_values =[value.text.replace(',', '').strip() if ',' in value.text else value.text.strip()  for value in row.select('td')[1:]]
+                df.loc[df['CPU Name'] == name.strip(), columns[1:]] = [cpu_values]
+
+    return df
+                
 
 
-print("Process completed. Check the output file for results.")
+def save_to_output_csv(df):
+    df.to_csv('output.csv', index=False)
+    
+
+
+if __name__ == "__main__":
+    table = get_cpu_table(get_soup_object())
+    df_template= pd.DataFrame(columns=get_table_header_columns(table))
+    df_template['CPU Name'] = list(get_search_names())
+    final_df = get_cpu_info(table, df_template)
+    save_to_output_csv(final_df)
